@@ -24,6 +24,7 @@ class _LoginState extends State<Login> {
   TextEditingController _usernameController = TextEditingController();
   TextEditingController _passwordController = TextEditingController();
   String userType = "1";
+  String loginValidation = "";
 
   @override
   void initState() {
@@ -59,14 +60,27 @@ class _LoginState extends State<Login> {
       print(response.status);
       if(response.status){
 
-        final res = await UserApi.updateUser(response.data.id, jsonEncode({
+        if(response.data.isLoggedin == "0"){
+          final res = await UserApi.updateUser(response.data.id, jsonEncode({
           "is_loggedin" : 1
         }));
 
         UserConfig.setUserSession(response);
         Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => HomePage(),));
+        }else{
+          setState(() {
+            loginValidation = "Already Logged In with other device";
+          _isLoading = !_isLoading;
+
+          });
+        }
+        
       }else{
+
+        print(response.data);
+
         setState(() {
+          loginValidation = "Invalid Credentials";
           _isLoading = !_isLoading;
         });
       }
@@ -92,8 +106,8 @@ class _LoginState extends State<Login> {
             color: AppConfig.kDarkColor,
             child: Center(
               child: Container(
-                width: AppConfig.kIsWebs || AppConfig.kIsWindows ? size.width * 0.4 : size.width * 0.8,
-                height: AppConfig.kIsWebs || AppConfig.kIsWindows ? size.height * 0.45 : size.height * 0.6,
+                width: AppConfig.kIsWebs || AppConfig.kIsWindows ? size.width * 0.4 : size.width * 0.5,
+                height: AppConfig.kIsWebs || AppConfig.kIsWindows ? size.height * 0.50 : size.height * 0.60,
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     colors: [
@@ -117,29 +131,33 @@ class _LoginState extends State<Login> {
                   children: [
                     Container(
                       padding: EdgeInsets.symmetric(
-                        vertical: 10
+                        vertical: 5
                       ),
                       child: Center(
-                        child: Text("Login Here" , style: Theme.of(context).textTheme.bodyText2,),
+                        child: Text("Login Here" , style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold
+                        )),
                       )
                     ),
                     Divider(color: AppConfig.kLightColor,),
                     Container(
                       padding: EdgeInsets.symmetric(
-                        vertical: 10,
-                        horizontal: 10
+                        horizontal: 15
                       ),
                       child: CustomInput(showHint: false, isPassword: false, showLabel: true, labelText: "Username",textEditingController: _usernameController,),
                     ),
+                    SizedBox(height: 10,),
                     Container(
                       padding: EdgeInsets.symmetric(
-                          vertical: 10,
-                          horizontal: 10
+                          horizontal: 15
                       ),
                       child: CustomInput(showHint: false, isPassword: true, showLabel: true, labelText: "Password", textEditingController: _passwordController,),
                     ),
                     SizedBox(height: 10,),
-
+                    Text(loginValidation ,  style : TextStyle(
+                      color: Colors.red
+                    ) ) ,
                     Container(
                       child: CustomTextButton(
                         onPressed: () {

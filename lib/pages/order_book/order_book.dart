@@ -1,14 +1,11 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:horizontal_data_table/horizontal_data_table.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:socket_io_client/socket_io_client.dart';
 import 'package:swcap/api/kite_api.dart';
 import 'package:swcap/api/order_book_api.dart';
-import 'package:swcap/api/trade_book_api.dart';
-import 'package:swcap/config/app_config.dart';
 import 'package:swcap/model/kite/kite_script_model.dart';
 import 'package:swcap/model/order_book/fetch_order_book.dart';
 
@@ -20,9 +17,9 @@ class OrderBook extends StatefulWidget {
 }
 
 class _OrderBookState extends State<OrderBook> {
-
   Future<OrderBookModel> _orderBookModel;
   String userID;
+  Socket socket;
 
   @override
   void initState() {
@@ -31,34 +28,37 @@ class _OrderBookState extends State<OrderBook> {
     super.initState();
   }
 
-  _getUserData() async {
+  _socketSetup() async {
+    socket = io('https://remarkablehr.in:8443', <String, dynamic>{
+      'transports': ['websocket'],
+      'autoConnect': false
+    });
 
+    socket.connect();
+  }
+
+  _getUserData() async {
     SharedPreferences pref = await SharedPreferences.getInstance();
 
     setState(() {
       userID = pref.getString("userID");
     });
 
+    _socketSetup();
     _fetchTradeBooks();
-
   }
 
   _fetchTradeBooks() async {
-
     final orderbook = OrderBookApi.fetchOrderBook(userID);
 
     setState(() {
       _orderBookModel = orderbook;
     });
-
   }
 
   @override
   void dispose() {
     // TODO: implement dispose
-    if(_timer != null){
-      _timer.cancel();
-    }
     super.dispose();
   }
 
@@ -66,296 +66,211 @@ class _OrderBookState extends State<OrderBook> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text("OrderBook", style: GoogleFonts.poppins(
-            color: Colors.white,
-            fontSize: 16
-        ),),
+        title: Text(
+          "OrderBook",
+          style: GoogleFonts.poppins(color: Colors.white, fontSize: 16),
+        ),
+        elevation: 0,
         centerTitle: true,
         actions: [
           InkWell(
             onTap: () {
-              Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => OrderBook(),));
+              Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => OrderBook(),
+                  ));
             },
             child: Container(
               padding: EdgeInsets.all(8),
-              child: Icon(Icons.sync , color: Colors.white,),
+              child: Icon(
+                Icons.sync,
+                color: Colors.white,
+              ),
             ),
           )
         ],
       ),
-      // floatingActionButton: FloatingActionButton(
-      //   onPressed: () {
-      //     Navigator.push(context, MaterialPageRoute(builder: (context) => AddOrder(userID: userID)));
-      //   },
-      //   child: Icon(Icons.add),
-      // ),
       body: Container(
-        width: double.infinity,
-        child: FutureBuilder<OrderBookModel>(
-          future: _orderBookModel,
-          builder: (context, snapshot) {
-            if(snapshot.hasData){
-              if(snapshot.data.status){
-                return HorizontalDataTable(
-                    leftHandSideColBackgroundColor: AppConfig.kDeepDarkColor,
-                    rightHandSideColBackgroundColor: AppConfig.kDeepDarkColor,
-                    itemCount: snapshot.data.data.length,
-                    leftHandSideColumnWidth: 100,
-                    enablePullToRefresh: true,
-                    refreshIndicator: WaterDropHeader(),
-                    refreshIndicatorHeight: 60,
-                    rowSeparatorWidget: Divider(color: Colors.white,),
-                    htdRefreshController: HDTRefreshController(),
-                    onRefresh: () async {
-                      print("refreshed");
-                      HDTRefreshController().refreshCompleted();
-                    },
-                    tableHeight: MediaQuery.of(context).size.height,
-                    rightHandSideColumnWidth: MediaQuery.of(context).size.width * 2,
-                    isFixedHeader: true,
-                    headerWidgets: _getTitleWidget(),
-                    leftSideItemBuilder: (context, index) {
-                      var trade = snapshot.data.data[index];
-                      return Container(
-                        child: Text(trade.scriptName , style: GoogleFonts.poppins(),),
-                        width: 100,
-                        height: 52,
-                        padding: EdgeInsets.all(8),
+          width: double.infinity,
+          child: Container(
+            child: Column(children: [
+              Container(
+                  padding: EdgeInsets.all(8),
+                  decoration: BoxDecoration(color: Colors.grey[800]),
+                  child: Row(
+                    children: [
+                      Container(
                         alignment: Alignment.centerLeft,
-                      );
-                    },
-                    rightSideItemBuilder: (context, index) {
-                      var script = snapshot.data.data[index];
-
-                      return _generateRightHandSideColumnRow(context, script, index);
-                    }
-                );
-              }else{
-                return Container(
-                  child: Center(
-                    child: Text("No Data Found"),
-                  ),
-                );
-              }
-            }else if(snapshot.hasError){
-              return Text("${snapshot.error}");
-            }else{
-              return Container(child: Center(child: CircularProgressIndicator(),),);
-            }
-          },
-        ),
-      ),
-    );
-  }
-
-  List<Widget> _getTitleWidget() {
-    return [
-      _getTitleItemWidget('Script', 100),
-      _getTitleItemWidget('Last Price', 100),
-      _getTitleItemWidget('Price', 100),
-      _getTitleItemWidget('Quantity', 100),
-      _getTitleItemWidget('Type', 100),
-      _getTitleItemWidget('Category', 100),
-      _getTitleItemWidget('Date', 100),
-      _getTitleItemWidget('Time', 100),
-      _getTitleItemWidget('Created', 100),
-    ];
-  }
-
-  Widget _getTitleItemWidget(String label, double width) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.grey
-      ),
-      child: Text(label, style: GoogleFonts.poppins(fontWeight: FontWeight.bold)),
-      width: width,
-      height: 56,
-      padding: EdgeInsets.fromLTRB(5, 0, 0, 0),
-      alignment: Alignment.centerLeft,
-    );
-  }
-
-  Timer _timer;
-
-  _realTimeTimer(script , _orderStream) async {
-
-    if(_timer != null && !_timer.isActive){
-      _timer = Timer.periodic(Duration(
-        seconds: 2
-      ), (timer) {
-        print(timer);
-        _getScriptData(script, _orderStream);
-      });
-    }
-
-  }
-
-  _getScriptData(script , StreamController stream) async {
-    try{
-      KiteApi.getScriptData(script , "NSE").then((value) {
-        stream.add(value);
-      });
-
-    }catch(e){
-      print(e);
-    }
-  }
-
-  _updateTrade(tradeID , tradeData) async {
-
-    final response = await TradeBookApi.updateTradeBook(tradeID, tradeData);
-
-    if(response.status){
-      print("Trade Updated");
-
-      Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => OrderBook(),));
-
-    }else{
-      print("Something went wrong");
-    }
-
-  }
-
-  Widget _generateRightHandSideColumnRow(BuildContext context,Datum script ,int index) {
-
-    StreamController<KiteScriptDataModel> _orderStream = StreamController();
-    if(_timer != null){
-      print(_timer.tick);
-      _realTimeTimer(script, _orderStream);
-    }
-    _getScriptData(script.scriptName, _orderStream);
-
-    return Padding(
-      padding: const EdgeInsets.only(left: 10),
-      child: Row(
-        children: <Widget>[
-          StreamBuilder<KiteScriptDataModel>(
-              stream: _orderStream.stream,
-              builder: (context, snapshot) {
-                if(snapshot.hasData){
-                  if(snapshot.data.data != null){
-                    if(snapshot.data.status){
-
-                      if(script.buySell == "Buy"){
-
-                        if(double.parse(script.price) >= snapshot.data.data.lastPrice){
-                          var tradeData = jsonEncode({
-                            "trade_in" : "1"
-                          });
-                          _updateTrade(script.tradeBookId , tradeData);
-                        }else{
-                          print("Not Buyed");
-                        }
-
-                      }else{
-
-                        if(double.parse(script.price) >= snapshot.data.data.lastPrice){
-                          print("Not Buyed");
-                        }else{
-                          var tradeData = jsonEncode({
-                            "trade_in" : "1"
-                          });
-                          _updateTrade(script.tradeBookId , tradeData);
-
-                        }
-
-                      }
-
-                      return Container(
-                        child: Text("${snapshot.data.data.lastPrice}" , style: GoogleFonts.poppins(),),
+                        width: 120,
+                        child: Text("Script"),
+                      ),
+                      Container(
+                        alignment: Alignment.centerLeft,
                         width: 100,
-                        height: 52,
-                        padding: EdgeInsets.fromLTRB(5, 0, 0, 0),
-                        alignment: Alignment.center,
-                      );
-                    }else{
-                      return Container(
-                        child: Text("0" , style: GoogleFonts.poppins(),),
-                        width: 80,
-                        height: 52,
-                        padding: EdgeInsets.fromLTRB(5, 0, 0, 0),
-                        alignment: Alignment.center,
-                      );
-                    }
-                  }else{
-                    return Container(
-                      child: Text("0" , style: GoogleFonts.poppins(),),
-                      width: 80,
-                      height: 52,
-                      padding: EdgeInsets.fromLTRB(5, 0, 0, 0),
-                      alignment: Alignment.center,
-                    );
-                  }
-                }else if(snapshot.hasError){
-                 return Container(
-                   child: Row(
-                     children: [
-                       Text("0" , style: GoogleFonts.poppins(),)
-                     ],
-                   ),
-                   width: 100,
-                   height: 52,
-                   padding: EdgeInsets.fromLTRB(5, 0, 0, 0),
-                   alignment: Alignment.center,
-                 );
-                }else{
-                  _getScriptData(script, _orderStream);
-                  return Text("Please Refresh Now");
-                }
-              },
-          ),
-          Container(
-            child: Text("${script.price}" , style: GoogleFonts.poppins(),),
-            width: 100,
-            height: 52,
-            padding: EdgeInsets.fromLTRB(5, 0, 0, 0),
-            alignment: Alignment.center,
-          ),
-          Container(
-            child: Text("${script.quantity}" ,style: GoogleFonts.poppins(),),
-            width: 100,
-            height: 52,
-            padding: EdgeInsets.fromLTRB(5, 0, 0, 0),
-            alignment: Alignment.center,
-          ),
-          Container(
-            child: Text("${script.buySell}" ,style: GoogleFonts.poppins(),),
-            width: 100,
-            height: 52,
-            padding: EdgeInsets.fromLTRB(5, 0, 0, 0),
-            alignment: Alignment.center,
-          ),
-          Container(
-            child: Text("${script.tradeCategory}" ,style: GoogleFonts.poppins(),),
-            width: 100,
-            height: 52,
-            padding: EdgeInsets.fromLTRB(5, 0, 0, 0),
-            alignment: Alignment.center,
-          ),
-          Container(
-            child: Text("${script.tradeDate}" ,style: GoogleFonts.poppins(),),
-            width: 100,
-            height: 52,
-            padding: EdgeInsets.fromLTRB(5, 0, 0, 0),
-            alignment: Alignment.center,
-          ),
-          Container(
-            child: Text("${script.tradeTime}" , style: GoogleFonts.poppins(),),
-            width: 100,
-            height: 52,
-            padding: EdgeInsets.fromLTRB(5, 0, 0, 0),
-            alignment: Alignment.center,
-          ),
-          Container(
-            child: Text("${script.tradeCreatedAt}" , style: GoogleFonts.poppins()),
-            width: 100,
-            height: 52,
-            padding: EdgeInsets.fromLTRB(5, 0, 0, 0),
-            alignment: Alignment.center,
-          ),
-        ],
-      ),
+                        child: Text("Current Price"),
+                      ),
+                      Container(
+                        alignment: Alignment.centerLeft,
+                        width: 100,
+                        child: Text("Trade Price"),
+                      ),
+                      Container(
+                        alignment: Alignment.centerLeft,
+                        width: 100,
+                        child: Text("Buy/Sell"),
+                      ),
+                      Container(
+                        alignment: Alignment.centerLeft,
+                        width: 100,
+                        child: Text("Quantity"),
+                      ),
+                      Container(
+                        alignment: Alignment.centerLeft,
+                        width: 100,
+                        child: Text("Category"),
+                      ),
+                      Container(
+                        alignment: Alignment.centerLeft,
+                        width: 100,
+                        child: Text("Trade Time"),
+                      ),
+                    ],
+                  )),
+              Expanded(
+                child: Container(
+                    padding: EdgeInsets.all(8),
+                    decoration: BoxDecoration(color: Colors.black),
+                    child: FutureBuilder<OrderBookModel>(
+                      future: _orderBookModel,
+                      builder: (context, snapshot) {
+                        if (snapshot.hasData) {
+                          print(snapshot.data);
+
+                          if (snapshot.data.status) {
+                            return ListView.builder(
+                              itemCount: snapshot.data.data.length,
+                              itemBuilder: (context, index) {
+                                var data = snapshot.data.data[index];
+
+                                Future<KiteScriptDataModel> kiteScriptDataModel;
+                                KiteScriptDataModel _kiteScript;
+
+                                if (data.tradeCategory == "CASH") {
+                                  kiteScriptDataModel = KiteApi.getScriptData(
+                                      data.scriptName, "NSE");
+                                } else if (data.tradeCategory == "FUTURE" ||
+                                    data.tradeCategory == "OPTION") {
+                                  kiteScriptDataModel = KiteApi.getScriptData(
+                                      data.scriptName, "NFO");
+                                }
+
+                                kiteScriptDataModel.then((script) {
+                                  print(script.data.instrumentToken);
+
+                                  _kiteScript = script;
+
+                                  socket.emit('subscribe', {
+                                    "token": [script.data.instrumentToken]
+                                  });
+                                });
+
+                                var lastPrice;
+                                StreamController _scriptStream =
+                                    StreamController();
+
+                                socket.on('receiveticks', (ticks) {
+                                  print(ticks);
+
+                                  ticks['tick'].forEach((tick) {
+                                    if (_kiteScript.data.instrumentToken ==
+                                        int.parse(tick['instrument_token']
+                                            .toString())) {
+                                      _scriptStream.add({
+                                        "data": tick,
+                                        "token":
+                                            tick['instrument_token'].toString()
+                                      });
+                                    }
+                                  });
+                                });
+
+                                return Container(
+                                  padding: EdgeInsets.symmetric(vertical: 10),
+                                  child: Row(
+                                    children: [
+                                      Container(
+                                        width: 120,
+                                        child: Text("${data.scriptName}"),
+                                      ),
+                                      Container(
+                                          width: 100,
+                                          child: StreamBuilder(
+                                            stream: _scriptStream.stream,
+                                            builder: (context, snapshot) {
+                                              if (snapshot.hasData) {
+                                                if (snapshot.data['data']
+                                                        ['last_price'] <=
+                                                    data.price) {
+                                                  print('Trade Executed');
+                                                }
+                                                return Text(
+                                                    "${snapshot.data['data']['last_price'].toString()}");
+                                              } else if (snapshot.hasError) {
+                                                return Text(
+                                                  "Error!",
+                                                  style: TextStyle(
+                                                      color: Colors.red),
+                                                );
+                                              } else {
+                                                return Text("Loading Data");
+                                              }
+                                            },
+                                          )),
+                                      Container(
+                                          width: 100,
+                                          child: Text("${data.price}")),
+                                      Container(
+                                          width: 100,
+                                          child: Text("${data.buySell}",
+                                              style: TextStyle(
+                                                  color: data.buySell == "Buy"
+                                                      ? Colors.green
+                                                      : Colors.red))),
+                                      Container(
+                                          width: 100,
+                                          child: Text("${data.quantity}")),
+                                      Container(
+                                          width: 100,
+                                          child: Text("${data.tradeCategory}")),
+                                      Container(
+                                          width: 100,
+                                          child: Text("${data.tradeTime}")),
+                                    ],
+                                  ),
+                                );
+                              },
+                            );
+                          } else {
+                            return Center(
+                              child: Text("No Trade Book Here"),
+                            );
+                          }
+                        } else if (snapshot.hasError) {
+                          return Container(
+                            child: Text("Error!"),
+                          );
+                        } else {
+                          return Container(
+                              child: Center(
+                            child: CircularProgressIndicator(),
+                          ));
+                        }
+                      },
+                    )),
+              )
+            ]),
+          )),
     );
   }
-
 }

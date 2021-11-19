@@ -1,7 +1,6 @@
 class ApiUrl {
 
   static String base_url = "https://sw-cap.in/api/main";
-
   static String getScriptDataApiUrl = base_url + '/watchScript';
   static String getWatchListApiUrl = base_url + '/getWatchlist';
   static String userLoginApiUrl = base_url + '/login';
@@ -14,5 +13,8 @@ class ApiUrl {
   static String fetchUserApiUrl = base_url + '/getUserData';
   static String updateTradeBookApiUrl = base_url + '/updateTradeBook';
   static String addPayoutRequestApiUrl = base_url + '/addPayoutRequest';
+  static String getSpanMarginApiUrl = base_url + '/getSpanMargins';
+  static String getKiteConnectApiUrl = base_url + '/getKiteApi';
+  static String getProfitLossApiUrl = base_url + '/profitLoss';
 
 }
