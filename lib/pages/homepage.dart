@@ -1,20 +1,22 @@
 import 'dart:async';
 import 'dart:convert';
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:get/get.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:intl/intl.dart';
 import 'package:modal_bottom_sheet/modal_bottom_sheet.dart';
-import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:socket_io_client/socket_io_client.dart';
 import 'package:swcap/api/kite_api.dart';
 import 'package:swcap/api/kite_connect_api.dart';
 import 'package:swcap/api/trade_book_api.dart';
+import 'package:swcap/api/user_api.dart';
 import 'package:swcap/components/drawer/custom_drawer.dart';
-import 'package:swcap/model/global/global_model.dart';
+import 'package:swcap/controllers/socket_controller.dart';
 import 'package:swcap/model/kite/kite_script_model.dart';
-import 'package:swcap/notifier/tick_notifier.dart';
+import 'package:swcap/model/user/user_model.dart';
+import 'package:swcap/pages/search/search.dart';
 // import 'package:socket_io_client/socket_io_client.dart';
 
 class HomePage extends StatefulWidget {
@@ -27,9 +29,12 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   List _scripts = [];
   String userID;
+  UserModel userModel;
   String apiKey;
   String accessToken;
   StreamController<List> _streamController = StreamController();
+  StreamController<List> _tabScriptController = StreamController();
+  // SocketController socketController = Get.put(SocketController());
   double oldValue = 0;
   Socket socket;
   int user;
@@ -37,6 +42,8 @@ class _HomePageState extends State<HomePage> {
   List scriptData = [];
   SharedPreferences pref;
   bool gotApi = false;
+  var nFormat =
+      NumberFormat.currency(locale: "HI", name: "INDIAN", symbol: "Rs. ");
 
   @override
   void initState() {
@@ -45,12 +52,19 @@ class _HomePageState extends State<HomePage> {
   }
 
   _fetchKiteApi() async {
-    await KiteConnectApi.getKiteApi().then((res) {
+    await KiteConnectApi.getKiteApi().then((res) async {
       if (res.status) {
         setState(() {
           apiKey = res.data.apiKey;
           accessToken = res.data.accessToken;
         });
+
+        SharedPreferences pref = await SharedPreferences.getInstance();
+
+        pref.setString("apiKey", res.data.apiKey);
+        pref.setString("accessToken", res.data.accessToken);
+
+        print("Emitting Kite Api");
 
         socket.emit("kiteApi",
             {"apiKey": res.data.apiKey, "accessToken": res.data.accessToken});
@@ -61,30 +75,28 @@ class _HomePageState extends State<HomePage> {
         //  pref.setString("kiteAccessToken", res.data.accessToken);
 
         socket.on('apiReceived', (data) {
-          print("Api Received");
+          print("apiReceived");
+          //256265, 260105
 
           socket.emit('subscribe', {"token": subscribeToken});
         });
-
-        print(res.data.toJson());
       }
     });
   }
 
   _socketSetup() async {
-    socket = io('https://remarkablehr.in:8443', <String, dynamic>{
+    socket = await io('https://remarkhr.com:8443', <String, dynamic>{
       'transports': ['websocket'],
-      'autoConnect': false
+      'autoConnect': false,
     });
 
     socket.connect();
-    // user = Random().nextInt(10000);
 
-    // socket.emit('registerMeSwcap' , {
-    //   "user" : user
-    // });
+    socket.emit('registerMeSwcap', {'user': 1});
 
-    // setState(() {});
+    socket.onConnect((data) => {print("Socket Connected")});
+
+    socket.onConnectTimeout((data) => print("Connection Timeout"));
   }
 
   getUser() async {
@@ -95,6 +107,15 @@ class _HomePageState extends State<HomePage> {
     });
 
     getData();
+    getUserData();
+  }
+
+  getUserData() async {
+    await UserApi.fetchUser(userID).then((user) {
+      user.status
+          ? setState(() => userModel = user)
+          : setState(() => userModel.data.balanceInAccount = '0');
+    });
   }
 
   getData() async {
@@ -108,8 +129,6 @@ class _HomePageState extends State<HomePage> {
           "script_token": element.watchlistScriptToken,
           "script_category": element.watchlistScriptCategory
         });
-
-        print(_scripts);
 
         setState(() {});
       });
@@ -131,23 +150,35 @@ class _HomePageState extends State<HomePage> {
     oldValue = oldV;
   }
 
-  _createOrder(lastPrice, tradeType, tradeData) async {
+  _createOrder(lastPrice, tradeType, tradeData, script_name, context) async {
     print(tradeData);
 
     await TradeBookApi.createTradeBook(tradeData).then((value) {
+      SnackBar snackBar;
       if (value.status) {
+        snackBar = SnackBar(
+            content: Text(
+          "Order Created Successfully of $script_name",
+          style: TextStyle(color: Colors.green),
+        ));
         Navigator.pop(context);
-        print("Trade Created");
       } else {
+        snackBar = SnackBar(
+            content: Text(
+          "Something went wrong",
+          style: TextStyle(color: Colors.red),
+        ));
         print("Something went wrong");
       }
+
+      ScaffoldMessenger.of(context).showSnackBar(snackBar);
     });
   }
 
   @override
   void dispose() {
     // TODO: implement dispose
-    socket.dispose();
+    // socket.dispose();
     super.dispose();
   }
 
@@ -179,150 +210,13 @@ class _HomePageState extends State<HomePage> {
         mouseCursor: SystemMouseCursors.click,
         backgroundColor: Colors.black54,
         onPressed: () {
-          showDialog(
-            context: context,
-            builder: (context) {
-              TextEditingController _scriptTextController =
-                  TextEditingController();
-              String scriptCategory = "CASH";
-
-              return StatefulBuilder(
-                builder: (context, setState) {
-                  return AlertDialog(
-                    actions: [
-                      Container(
-                        height: 50,
-                        child: TextField(
-                          controller: _scriptTextController,
-                          decoration: InputDecoration(
-                              labelText: "Script Symbol",
-                              labelStyle:
-                                  GoogleFonts.poppins(color: Colors.black)),
-                        ),
-                      ),
-                      SizedBox(
-                        height: 10,
-                      ),
-                      Container(
-                        height: 50,
-                        child: DropdownButton(
-                            isExpanded: true,
-                            value: scriptCategory,
-                            onChanged: (value) {
-                              print(value);
-                              setState(() {
-                                scriptCategory = value;
-                              });
-                            },
-                            items: [
-                              DropdownMenuItem(
-                                  value: "CASH",
-                                  child: Text("CASH",
-                                      style: GoogleFonts.poppins(
-                                          color: Colors.black))),
-                              DropdownMenuItem(
-                                  value: "FUTURE",
-                                  child: Text("FUTURE",
-                                      style: GoogleFonts.poppins(
-                                          color: Colors.black))),
-                              DropdownMenuItem(
-                                  value: "OPTION",
-                                  child: Text("OPTION",
-                                      style: GoogleFonts.poppins(
-                                          color: Colors.black)))
-                            ]),
-                      ),
-                      SizedBox(
-                        height: 10,
-                      ),
-                      MaterialButton(
-                        color: Colors.black87,
-                        textColor: Colors.white,
-                        onPressed: () async {
-                          print("Adding Script");
-
-                          KiteScriptDataModel res;
-
-                          if (scriptCategory == "CASH") {
-                            res = await KiteApi.getScriptData(
-                                _scriptTextController.text, "NSE");
-                          } else if (scriptCategory == "FUTURE" ||
-                              scriptCategory == "OPTION") {
-                            res = await KiteApi.getScriptData(
-                                _scriptTextController.text, "NFO");
-                          }
-
-                          String token = "";
-
-                          if (res.status) {
-                            print(res.data.instrumentToken);
-
-                            setState(() {
-                              token = res.data.instrumentToken.toString();
-                            });
-                          } else {
-                            SnackBar snackBar =
-                                SnackBar(content: Text("Script not available"));
-
-                            ScaffoldMessenger.of(context)
-                                .showSnackBar(snackBar);
-                          }
-
-                          print(token);
-
-                          GlobalModel response;
-
-                          if (scriptCategory == "CASH") {
-                            response = await KiteApi.addWatchList(
-                                _scriptTextController.text,
-                                token,
-                                "NSE",
-                                'CASH',
-                                userID);
-                          } else if (scriptCategory == "FUTURE" ||
-                              scriptCategory == "OPTION") {
-                            response = await KiteApi.addWatchList(
-                                _scriptTextController.text,
-                                token,
-                                "NFO",
-                                scriptCategory,
-                                userID);
-                          }
-
-                          if (response.status) {
-                            if (_scriptTextController.text.isNotEmpty) {
-                              _scripts.add({
-                                "script_name": "${_scriptTextController.text}",
-                                "script_token": "$token"
-                              });
-
-                              _streamController.add(_scripts);
-
-                              setState(() {});
-
-                              socket.emit('subscribe', {
-                                "token": [int.parse(token)]
-                              });
-                            } else {
-                              print("Script not added");
-                            }
-
-                            Navigator.pop(context);
-                          } else {
-                            print("script is empty");
-                          }
-                        },
-                        child: Text(
-                          "Add",
-                          style: GoogleFonts.poppins(),
-                        ),
-                      )
-                    ],
-                  );
-                },
-              );
-            },
-          );
+          Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => Search(
+                  userID: userID,
+                ),
+              ));
         },
         child: Icon(Icons.add),
       ),
@@ -408,6 +302,7 @@ class _HomePageState extends State<HomePage> {
                                 socket.on(
                                     'receiveticks',
                                     (ticks) => {
+                                          print(ticks),
                                           ticks['tick'].forEach((tick) {
                                             scriptData.add({
                                               "data": tick,
@@ -419,11 +314,6 @@ class _HomePageState extends State<HomePage> {
                                                 int.parse(
                                                     script['script_token'])) {
                                               // print(tick);
-                                              Provider.of<TickNotifier>(context,
-                                                      listen: false)
-                                                  .storeValue(
-                                                      tick['last_price'],
-                                                      tick['instrument_token']);
 
                                               _scriptStream.add({
                                                 "data": tick,
@@ -460,31 +350,36 @@ class _HomePageState extends State<HomePage> {
                                             TextEditingController
                                                 _instrumentController =
                                                 TextEditingController();
+
                                             TextEditingController
                                                 _quantityController =
                                                 TextEditingController();
+
+                                            _quantityController.text = '0';
                                             TextEditingController
                                                 _priceController =
                                                 TextEditingController();
+
+                                            _priceController.text = "0.0";
                                             TextEditingController
                                                 _stoplossController =
                                                 TextEditingController();
                                             TextEditingController
                                                 _discloseQuantityController =
                                                 TextEditingController();
+                                            var lotSize = 0;
                                             _instrumentController.text =
                                                 stockName;
-                                            var lastPrice = "";
+                                            var lastPrice = "0.0";
 
                                             dynamic depthProduct = "MIS";
                                             dynamic depthType = "DAY";
                                             dynamic depthValidity = "DAY";
                                             dynamic depthTypeOptions = "MARKET";
 
-                                            // setState(() {
-                                            //   _priceController.text = lastPrice;
-                                            // });
-                                            // if(depthTypeOptions == "MARKET")
+                                            String errorAlert = "";
+
+                                            // GET SCRIPT DATA
 
                                             socket.on(
                                                 "receiveticks",
@@ -696,6 +591,13 @@ class _HomePageState extends State<HomePage> {
                                                                 child: ListView(
                                                                   children: [
                                                                     Container(
+                                                                        child: Text(
+                                                                            "Current Balance : ${nFormat.format(double.parse(userModel.data.balanceInAccount))}")),
+                                                                    Divider(
+                                                                      color: Colors
+                                                                          .white,
+                                                                    ),
+                                                                    Container(
                                                                       child:
                                                                           Row(
                                                                         mainAxisAlignment:
@@ -709,7 +611,7 @@ class _HomePageState extends State<HomePage> {
                                                                                 20,
                                                                           ),
                                                                           DepthInput(
-                                                                              title: "Quantity",
+                                                                              title: stockCategory == "CASH" ? "Quantity (Shares)" : "Quantity (Lots)",
                                                                               inputController: _quantityController,
                                                                               inputType: TextInputType.number),
                                                                           SizedBox(
@@ -718,9 +620,9 @@ class _HomePageState extends State<HomePage> {
                                                                           ),
                                                                           depthTypeOptions != "MARKET"
                                                                               ? DepthInput(
-                                                                                  title: "Price",
+                                                                                  title: depthTypeOptions == "S/L" ? "StopLoss Price" : "Price",
                                                                                   inputController: _priceController,
-                                                                                  inputType: TextInputType.number,
+                                                                                  inputType: TextInputType.numberWithOptions(decimal: true, signed: false),
                                                                                 )
                                                                               : Container(),
                                                                         ],
@@ -874,6 +776,18 @@ class _HomePageState extends State<HomePage> {
                                                                         ),
                                                                       ),
                                                                     ),
+                                                                    Container(
+                                                                      alignment:
+                                                                          Alignment
+                                                                              .center,
+                                                                      child:
+                                                                          Text(
+                                                                        errorAlert,
+                                                                        style: TextStyle(
+                                                                            color:
+                                                                                Colors.red),
+                                                                      ),
+                                                                    ),
                                                                     Padding(
                                                                         padding:
                                                                             EdgeInsets.all(8),
@@ -883,6 +797,16 @@ class _HomePageState extends State<HomePage> {
                                                                               child: MaterialButton(
                                                                             onPressed:
                                                                                 () {
+                                                                              if (_quantityController.text == "" || int.parse(_quantityController.text) < 1) {
+                                                                                setState(() => errorAlert = "Invalid Quantity");
+                                                                                return false;
+                                                                              }
+
+                                                                              if (_priceController.text == "" || double.parse(_priceController.text) < 1.0) {
+                                                                                setState(() => errorAlert = "Invalid Price");
+                                                                                return false;
+                                                                              }
+
                                                                               print("Buy Working");
 
                                                                               if (depthTypeOptions == "S/L") {
@@ -924,7 +848,7 @@ class _HomePageState extends State<HomePage> {
                                                                                 "client_id": userID
                                                                               });
 
-                                                                              _createOrder(lastPrice, tradeType, tradeData);
+                                                                              _createOrder(lastPrice, tradeType, tradeData, _instrumentController.text, context);
                                                                             },
                                                                             color:
                                                                                 Colors.green,
@@ -975,7 +899,7 @@ class _HomePageState extends State<HomePage> {
                                                                                       "client_id": userID
                                                                                     });
 
-                                                                                    _createOrder(lastPrice, tradeType, tradeData);
+                                                                                    _createOrder(lastPrice, tradeType, tradeData, _instrumentController.text, context);
                                                                                   },
                                                                                   color: Colors.red,
                                                                                   child: Text("Sell", style: TextStyle(color: Colors.white))))
@@ -1087,11 +1011,25 @@ class _HomePageState extends State<HomePage> {
                                                                 Colors.red))),
                                                 GestureDetector(
                                                   onTap: () async {
+                                                    final response =
+                                                        KiteApi.removeWatchList(
+                                                            script[
+                                                                'script_token'],
+                                                            userID);
+
+                                                    response.then((res) {
+                                                      // SnackBar snackBar;
+                                                      if (res.status) {
+                                                        print("removed");
+                                                      } else {
+                                                        print("not removed");
+                                                      }
+                                                    });
+
                                                     print(script['script_id']);
                                                     socket.emit('unsubscribe', {
                                                       "token": [
-                                                        script[
-                                                            'instrument_token']
+                                                        script['script_token']
                                                       ]
                                                     });
 
@@ -1254,12 +1192,8 @@ class _HomePageState extends State<HomePage> {
 }
 
 class DepthInput extends StatelessWidget {
-  const DepthInput({
-    Key key,
-    this.inputController,
-    this.title,
-    this.inputType,
-  }) : super(key: key);
+  const DepthInput({Key key, this.inputController, this.title, this.inputType})
+      : super(key: key);
 
   final TextEditingController inputController;
   final String title;
@@ -1280,6 +1214,11 @@ class DepthInput extends StatelessWidget {
               child: TextField(
                 controller: inputController,
                 keyboardType: inputType ?? TextInputType.text,
+                inputFormatters: inputType == TextInputType.number
+                    ? <TextInputFormatter>[
+                        FilteringTextInputFormatter.digitsOnly
+                      ]
+                    : [],
                 style: TextStyle(fontSize: 10, color: Colors.white),
                 decoration: InputDecoration(
                   border: InputBorder.none,

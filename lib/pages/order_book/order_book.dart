@@ -1,11 +1,13 @@
 import 'dart:async';
-
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:modal_bottom_sheet/modal_bottom_sheet.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:socket_io_client/socket_io_client.dart';
 import 'package:swcap/api/kite_api.dart';
 import 'package:swcap/api/order_book_api.dart';
+import 'package:swcap/api/trade_book_api.dart';
 import 'package:swcap/model/kite/kite_script_model.dart';
 import 'package:swcap/model/order_book/fetch_order_book.dart';
 
@@ -60,6 +62,38 @@ class _OrderBookState extends State<OrderBook> {
   void dispose() {
     // TODO: implement dispose
     super.dispose();
+  }
+
+  // Function to update the executed trade
+  _executeTrade(tradeID, scriptName, lastPrice) async {
+    // Update the executed trade in TradeBook
+    // Where Order = 0 & Trade = 1
+
+    // Get the response in response variable
+    final response = await TradeBookApi.updateTradeBook(
+        tradeID, jsonEncode({"trade_in": '1'}));
+
+    // Initialize the SnackBar
+    SnackBar snackBar;
+
+    // Check if the status of the response is true or false
+    if (response.status) {
+      snackBar = SnackBar(
+        content: Text("$scriptName is executed at $lastPrice"),
+      );
+    } else {
+      snackBar = SnackBar(content: Text("Something went wrong in $scriptName"));
+    }
+
+    // Show the SnackBar according to the response
+    ScaffoldMessenger.of(context).showSnackBar(snackBar);
+
+    // Navigate the page on the same page after trade execution
+    Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (context) => OrderBook(),
+        ));
   }
 
   @override
@@ -135,6 +169,11 @@ class _OrderBookState extends State<OrderBook> {
                         width: 100,
                         child: Text("Trade Time"),
                       ),
+                      Container(
+                        alignment: Alignment.centerLeft,
+                        width: 100,
+                        child: Text("Action"),
+                      ),
                     ],
                   )),
               Expanded(
@@ -209,11 +248,41 @@ class _OrderBookState extends State<OrderBook> {
                                             stream: _scriptStream.stream,
                                             builder: (context, snapshot) {
                                               if (snapshot.hasData) {
-                                                if (snapshot.data['data']
-                                                        ['last_price'] <=
-                                                    data.price) {
-                                                  print('Trade Executed');
+                                                if (data.buySell == "Buy") {
+                                                  if (double.parse(snapshot
+                                                          .data['data']
+                                                              ['last_price']
+                                                          .toString()) <=
+                                                      double.parse(data.price
+                                                          .toString())) {
+                                                    _executeTrade(
+                                                        data.tradeBookId,
+                                                        data.scriptName,
+                                                        snapshot.data['data']
+                                                                ['last_price']
+                                                            .toString());
+                                                  }
+                                                } else if (data.buySell ==
+                                                    "Sell") {
+                                                  if (double.parse(snapshot
+                                                          .data['data']
+                                                              ['last_price']
+                                                          .toString()) >=
+                                                      double.parse(data.price
+                                                          .toString())) {
+                                                    print('Trade Executed');
+
+                                                    // SEND EXECUTED ORDER TO TRADE BOOK
+
+                                                    _executeTrade(
+                                                        data.tradeBookId,
+                                                        data.scriptName,
+                                                        snapshot.data['data']
+                                                                ['last_price']
+                                                            .toString());
+                                                  }
                                                 }
+
                                                 return Text(
                                                     "${snapshot.data['data']['last_price'].toString()}");
                                               } else if (snapshot.hasError) {
@@ -246,6 +315,231 @@ class _OrderBookState extends State<OrderBook> {
                                       Container(
                                           width: 100,
                                           child: Text("${data.tradeTime}")),
+                                      Container(
+                                          width: 100,
+                                          child: Row(
+                                            children: [
+                                              InkWell(
+                                                onTap: () {
+                                                  TextEditingController
+                                                      _quantityController =
+                                                      TextEditingController();
+                                                  TextEditingController
+                                                      _priceController =
+                                                      TextEditingController();
+                                                  TextEditingController
+                                                      _discloseController =
+                                                      TextEditingController();
+
+                                                  _quantityController.text =
+                                                      data.quantity;
+                                                  _priceController.text =
+                                                      data.price;
+                                                  _discloseController.text =
+                                                      "0";
+
+                                                  showBarModalBottomSheet(
+                                                    context: context,
+                                                    builder: (context) {
+                                                      return StatefulBuilder(
+                                                        builder: (context,
+                                                            setState) {
+                                                          return Container(
+                                                            height: MediaQuery.of(
+                                                                        context)
+                                                                    .size
+                                                                    .height *
+                                                                0.5,
+                                                            color:
+                                                                Colors.black87,
+                                                            child: Column(
+                                                              children: [
+                                                                SizedBox(
+                                                                  height: 50,
+                                                                ),
+                                                                Container(
+                                                                    alignment:
+                                                                        Alignment
+                                                                            .center,
+                                                                    child: Text(
+                                                                      data.scriptName,
+                                                                      style: TextStyle(
+                                                                          fontSize:
+                                                                              18),
+                                                                    )),
+                                                                Container(
+                                                                  padding:
+                                                                      EdgeInsets
+                                                                          .all(
+                                                                              8.0),
+                                                                  child: Row(
+                                                                    children: [
+                                                                      Expanded(
+                                                                        child:
+                                                                            TextFormField(
+                                                                          controller:
+                                                                              _quantityController,
+                                                                          style:
+                                                                              TextStyle(color: Colors.white),
+                                                                          decoration:
+                                                                              InputDecoration(label: Text("Quantity")),
+                                                                        ),
+                                                                      ),
+                                                                      SizedBox(
+                                                                        width:
+                                                                            10,
+                                                                      ),
+                                                                      Expanded(
+                                                                        child:
+                                                                            TextFormField(
+                                                                          controller:
+                                                                              _priceController,
+                                                                          style:
+                                                                              TextStyle(color: Colors.white),
+                                                                          decoration:
+                                                                              InputDecoration(label: Text("Price")),
+                                                                        ),
+                                                                      ),
+                                                                      SizedBox(
+                                                                        width:
+                                                                            10,
+                                                                      ),
+                                                                      Expanded(
+                                                                        child:
+                                                                            TextFormField(
+                                                                          controller:
+                                                                              _discloseController,
+                                                                          style:
+                                                                              TextStyle(color: Colors.white),
+                                                                          decoration:
+                                                                              InputDecoration(label: Text("Disclose Quantity")),
+                                                                        ),
+                                                                      )
+                                                                    ],
+                                                                  ),
+                                                                ),
+                                                                SizedBox(
+                                                                  height: 10,
+                                                                ),
+                                                                Container(
+                                                                  child:
+                                                                      MaterialButton(
+                                                                    onPressed:
+                                                                        () async {
+                                                                      var orderData =
+                                                                          jsonEncode({
+                                                                        "quantity":
+                                                                            _quantityController.text,
+                                                                        "price":
+                                                                            _priceController.text,
+                                                                        "trade_disclose_quantity":
+                                                                            _discloseController.text
+                                                                      });
+
+                                                                      await OrderBookApi.updateOrderBook(
+                                                                              userID,
+                                                                              data.tradeBookId,
+                                                                              orderData)
+                                                                          .then((response) {
+                                                                        SnackBar
+                                                                            snackBar;
+                                                                        if (response
+                                                                            .status) {
+                                                                          snackBar =
+                                                                              SnackBar(
+                                                                            content:
+                                                                                Text("Order Updated Successfully"),
+                                                                          );
+                                                                        } else {
+                                                                          snackBar =
+                                                                              SnackBar(content: Text("Order can't updated"));
+                                                                        }
+
+                                                                        ScaffoldMessenger.of(context)
+                                                                            .showSnackBar(snackBar);
+
+                                                                        Navigator.pop(
+                                                                            context);
+
+                                                                        Navigator.pushReplacement(
+                                                                            context,
+                                                                            MaterialPageRoute(
+                                                                              builder: (context) => OrderBook(),
+                                                                            ));
+                                                                      });
+                                                                    },
+                                                                    color: Colors
+                                                                        .white,
+                                                                    child: Text(
+                                                                        "Update Order"),
+                                                                  ),
+                                                                )
+                                                              ],
+                                                            ),
+                                                          );
+                                                        },
+                                                      );
+                                                    },
+                                                  );
+                                                },
+                                                child: Padding(
+                                                  padding:
+                                                      const EdgeInsets.all(8.0),
+                                                  child: Icon(
+                                                    Icons.edit,
+                                                    color: Colors.white,
+                                                    size: 14,
+                                                  ),
+                                                ),
+                                              ),
+                                              InkWell(
+                                                onTap: () async {
+                                                  await OrderBookApi
+                                                          .deleteOrderBook(
+                                                              userID,
+                                                              data.tradeBookId)
+                                                      .then((res) {
+                                                    SnackBar snackBar;
+
+                                                    if (res.status) {
+                                                      snackBar = SnackBar(
+                                                          content: Text(
+                                                              "Order Deleted Successfully",
+                                                              style: TextStyle(
+                                                                  color: Colors
+                                                                      .white)));
+                                                    } else {
+                                                      snackBar = SnackBar(
+                                                          content: Text(
+                                                        "Something went wrong",
+                                                        style: TextStyle(
+                                                            color: Colors.red),
+                                                      ));
+                                                    }
+
+                                                    ScaffoldMessenger.of(
+                                                            context)
+                                                        .showSnackBar(snackBar);
+
+                                                    Navigator.pushReplacement(
+                                                        context,
+                                                        MaterialPageRoute(
+                                                          builder: (context) =>
+                                                              OrderBook(),
+                                                        ));
+                                                  });
+                                                },
+                                                child: Padding(
+                                                  padding: EdgeInsets.all(8.0),
+                                                  child: Icon(
+                                                    Icons.cancel,
+                                                    color: Colors.red,
+                                                    size: 14,
+                                                  ),
+                                                ),
+                                              )
+                                            ],
+                                          )),
                                     ],
                                   ),
                                 );
@@ -253,7 +547,7 @@ class _OrderBookState extends State<OrderBook> {
                             );
                           } else {
                             return Center(
-                              child: Text("No Trade Book Here"),
+                              child: Text("No Order Here"),
                             );
                           }
                         } else if (snapshot.hasError) {
