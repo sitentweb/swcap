@@ -41,7 +41,7 @@ class KiteApi {
 
   static Future<KiteWatchLIstModel> getWatchLists(userID) async {
     final client = http.Client();
-    KiteWatchLIstModel thisResponse = KiteWatchLIstModel();
+    KiteWatchLIstModel thisResponse = KiteWatchLIstModel(status: false);
     try {
       final response = await client
           .get(Uri.parse(ApiUrl.getWatchListApiUrl + "?user_id=" + userID));
@@ -51,13 +51,15 @@ class KiteApi {
         } else {
           thisResponse = KiteWatchLIstModel(status: false, data: []);
         }
-
-        return thisResponse;
       } else {
         print("Wrong Status Code : ${response.statusCode}");
+        return thisResponse;
       }
     } catch (e) {
-      print(e);
+      thisResponse.status = false;
+      thisResponse.data = [];
+      print("Something went wrong finding kite watchlist");
+      return thisResponse;
     } finally {
       client.close();
     }

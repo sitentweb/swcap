@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:get/get.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:socket_io_client/socket_io_client.dart';
 import 'package:swcap/api/fetch_scripts.dart';
 import 'package:swcap/api/kite_api.dart';
+import 'package:swcap/controllers/main_controller.dart';
 import 'package:swcap/model/kite/all_script_model.dart';
 import 'package:swcap/pages/homepage.dart';
 
@@ -15,6 +17,7 @@ class Search extends StatefulWidget {
 }
 
 class _SearchState extends State<Search> {
+  MainController mainController = Get.put(MainController());
   String searchString = "";
   String apiKey = "";
   String accessToken = "";
@@ -100,7 +103,8 @@ class _SearchState extends State<Search> {
                       textCapitalization: TextCapitalization.characters,
                       style: TextStyle(color: Colors.white),
                       decoration: InputDecoration(
-                          label: Text("Enter Stock Symbol"), hintText: "Enter minimum 3 characters"),
+                          label: Text("Enter Stock Symbol"),
+                          hintText: "Enter minimum 3 characters"),
                     ),
                   ),
                 ],

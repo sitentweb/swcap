@@ -19,7 +19,7 @@ class UserConfig {
 
     // STORED IN GET STORAGE
     mind.write(IS_USER_LOGGED_IN, true);
-    mind.write(USER_ID, user.data.name ?? "");
+    mind.write(USER_ID, user.data.id ?? "");
     mind.write(USER_NAME, user.data.name);
     mind.write(USER_USERNAME, user.data.username);
     mind.write(USER_MOBILE, user.data.mobileNumber);

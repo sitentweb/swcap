@@ -9,11 +9,12 @@ import 'package:modal_bottom_sheet/modal_bottom_sheet.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:socket_io_client/socket_io_client.dart';
 import 'package:swcap/api/kite_api.dart';
-import 'package:swcap/api/kite_connect_api.dart';
 import 'package:swcap/api/trade_book_api.dart';
-import 'package:swcap/api/user_api.dart';
 import 'package:swcap/components/drawer/custom_drawer.dart';
+import 'package:swcap/controllers/kite_controller.dart';
+import 'package:swcap/controllers/main_controller.dart';
 import 'package:swcap/controllers/socket_controller.dart';
+import 'package:swcap/controllers/user_controller.dart';
 import 'package:swcap/model/kite/kite_script_model.dart';
 import 'package:swcap/model/user/user_model.dart';
 import 'package:swcap/pages/search/search.dart';
@@ -34,7 +35,10 @@ class _HomePageState extends State<HomePage> {
   String accessToken;
   StreamController<List> _streamController = StreamController();
   StreamController<List> _tabScriptController = StreamController();
-  // SocketController socketController = Get.put(SocketController());
+  MainController mainController = Get.put(MainController());
+  SocketController socketController = Get.put(SocketController());
+  UserController userController = Get.put(UserController());
+  KiteController kiteController = Get.put(KiteController());
   double oldValue = 0;
   Socket socket;
   int user;
@@ -47,103 +51,13 @@ class _HomePageState extends State<HomePage> {
 
   @override
   void initState() {
-    getUser();
+    init();
     super.initState();
   }
 
-  _fetchKiteApi() async {
-    await KiteConnectApi.getKiteApi().then((res) async {
-      if (res.status) {
-        setState(() {
-          apiKey = res.data.apiKey;
-          accessToken = res.data.accessToken;
-        });
-
-        SharedPreferences pref = await SharedPreferences.getInstance();
-
-        pref.setString("apiKey", res.data.apiKey);
-        pref.setString("accessToken", res.data.accessToken);
-
-        print("Emitting Kite Api");
-
-        socket.emit("kiteApi",
-            {"apiKey": res.data.apiKey, "accessToken": res.data.accessToken});
-
-        //  SharedPreferences pref = await SharedPreferences.getInstance();
-
-        //  pref.setString("kiteApi", res.data.apiKey);
-        //  pref.setString("kiteAccessToken", res.data.accessToken);
-
-        socket.on('apiReceived', (data) {
-          print("apiReceived");
-          //256265, 260105
-
-          socket.emit('subscribe', {"token": subscribeToken});
-        });
-      }
-    });
-  }
-
-  _socketSetup() async {
-    socket = await io('https://remarkhr.com:8443', <String, dynamic>{
-      'transports': ['websocket'],
-      'autoConnect': false,
-    });
-
-    socket.connect();
-
-    socket.emit('registerMeSwcap', {'user': 1});
-
-    socket.onConnect((data) => {print("Socket Connected")});
-
-    socket.onConnectTimeout((data) => print("Connection Timeout"));
-  }
-
-  getUser() async {
-    SharedPreferences pref = await SharedPreferences.getInstance();
-
-    setState(() {
-      userID = pref.getString("userID");
-    });
-
-    getData();
-    getUserData();
-  }
-
-  getUserData() async {
-    await UserApi.fetchUser(userID).then((user) {
-      user.status
-          ? setState(() => userModel = user)
-          : setState(() => userModel.data.balanceInAccount = '0');
-    });
-  }
-
-  getData() async {
-    final response = await KiteApi.getWatchLists(userID);
-
-    if (response.status) {
-      response.data.forEach((element) {
-        _scripts.add({
-          "script_id": element.watchlistId,
-          "script_name": element.watchlistScriptName,
-          "script_token": element.watchlistScriptToken,
-          "script_category": element.watchlistScriptCategory
-        });
-
-        setState(() {});
-      });
-
-      await _socketSetup();
-      await _fetchKiteApi();
-
-      _scripts.forEach((element) {
-        subscribeToken.add(int.parse(element['script_token']));
-      });
-
-      _streamController.add(_scripts);
-    } else {
-      print("No Watchlist Found");
-    }
+  init() async {
+    mainController.init();
+    mainController.startEngine();
   }
 
   _storeOldValue(oldV) {
@@ -185,134 +99,113 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        elevation: 0,
-        backgroundColor: Colors.black12,
-        actions: [
-          InkWell(
-            onTap: () {
-              Navigator.pushReplacement(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => HomePage(),
-                  ));
-            },
-            child: Padding(
-              padding: const EdgeInsets.all(8.0),
-              child: Icon(Icons.sync),
+        appBar: AppBar(
+          elevation: 0,
+          backgroundColor: Colors.black12,
+          actions: [
+            InkWell(
+              onTap: () {
+                mainController.restartEngine();
+              },
+              child: Padding(
+                padding: const EdgeInsets.all(8.0),
+                child: Icon(Icons.sync),
+              ),
             ),
-          ),
-        ],
-      ),
-      drawer: CustomDrawer(),
-      floatingActionButton: FloatingActionButton(
-        mini: true,
-        mouseCursor: SystemMouseCursors.click,
-        backgroundColor: Colors.black54,
-        onPressed: () {
-          Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => Search(
-                  userID: userID,
-                ),
-              ));
-        },
-        child: Icon(Icons.add),
-      ),
-      body: Container(
-        child: Column(
-          children: [
-            Container(
-              padding: EdgeInsets.all(5),
-              decoration: BoxDecoration(color: Colors.grey[800]),
-              alignment: Alignment.centerLeft,
-              child: Row(children: [
-                Container(
-                  alignment: Alignment.centerLeft,
-                  width: 120,
-                  child: Text("Script"),
-                ),
-                Container(
-                  alignment: Alignment.centerLeft,
-                  width: 100,
-                  child: Text("Current Price"),
-                ),
-                Container(
-                  alignment: Alignment.centerLeft,
-                  width: 120,
-                  child: Text("Today's Market"),
-                ),
-                Container(
-                  alignment: Alignment.centerLeft,
-                  width: 100,
-                  child: Text("Volume"),
-                ),
-                Container(
-                  alignment: Alignment.centerLeft,
-                  width: 100,
-                  child: Text("Open"),
-                ),
-                Container(
-                  alignment: Alignment.centerLeft,
-                  width: 100,
-                  child: Text("Close"),
-                ),
-                Container(
-                  alignment: Alignment.centerLeft,
-                  width: 100,
-                  child: Text("High"),
-                ),
-                Container(
-                  alignment: Alignment.centerLeft,
-                  width: 70,
-                  child: Text("Low"),
-                ),
-                Container(
-                  alignment: Alignment.centerLeft,
-                  width: 30,
-                  child: Icon(
-                    Icons.cancel,
-                    size: 12,
-                    color: Colors.white,
+          ],
+        ),
+        drawer: CustomDrawer(),
+        floatingActionButton: FloatingActionButton(
+          mini: true,
+          mouseCursor: SystemMouseCursors.click,
+          backgroundColor: Colors.black54,
+          onPressed: () {
+            Get.to(() => Search(userID: userController.user.value.id));
+          },
+          child: Icon(Icons.add),
+        ),
+        body: Obx(() => Container(
+              child: Column(
+                children: [
+                  Container(
+                    padding: EdgeInsets.all(5),
+                    decoration: BoxDecoration(color: Colors.grey[800]),
+                    alignment: Alignment.centerLeft,
+                    child: Row(children: [
+                      Container(
+                        alignment: Alignment.centerLeft,
+                        width: 100,
+                        child: Text("Script"),
+                      ),
+                      Container(
+                        alignment: Alignment.centerLeft,
+                        width: 100,
+                        child: Text("Current Price"),
+                      ),
+                      Container(
+                        alignment: Alignment.centerLeft,
+                        width: 110,
+                        child: Text("Today's Market"),
+                      ),
+                      Container(
+                        alignment: Alignment.centerLeft,
+                        width: 100,
+                        child: Text("Volume"),
+                      ),
+                      Container(
+                        alignment: Alignment.centerLeft,
+                        width: 100,
+                        child: Text("Open"),
+                      ),
+                      Container(
+                        alignment: Alignment.centerLeft,
+                        width: 100,
+                        child: Text("Close"),
+                      ),
+                      Container(
+                        alignment: Alignment.centerLeft,
+                        width: 100,
+                        child: Text("High"),
+                      ),
+                      Container(
+                        alignment: Alignment.centerLeft,
+                        width: 70,
+                        child: Text("Low"),
+                      ),
+                      Container(
+                        alignment: Alignment.centerLeft,
+                        width: 30,
+                        child: Icon(
+                          Icons.cancel,
+                          size: 12,
+                          color: Colors.white,
+                        ),
+                      )
+                    ]),
                   ),
-                )
-              ]),
-            ),
-            Expanded(
-              child: Container(
-                padding: EdgeInsets.all(5),
-                width: MediaQuery.of(context).size.width,
-                child: _scripts.length > 0
-                    ? StreamBuilder<List>(
-                        stream: _streamController.stream,
-                        builder: (context, snapshot) {
-                          if (snapshot.hasData) {
-                            // print(snapshot.data);
-
-                            return ListView.builder(
+                  Expanded(
+                    child: Container(
+                      padding: EdgeInsets.all(5),
+                      width: MediaQuery.of(context).size.width,
+                      child: mainController.watchListData.length > 0
+                          ? ListView.builder(
                               physics: AlwaysScrollableScrollPhysics(),
-                              itemCount: snapshot.data.length,
+                              itemCount: mainController.watchListData.length,
                               itemBuilder: (context, index) {
-                                var script = snapshot.data[index];
+                                var script =
+                                    mainController.watchListData[index];
 
                                 StreamController _scriptStream =
                                     StreamController();
 
-                                socket.on(
+                                socketController.socket.on(
                                     'receiveticks',
                                     (ticks) => {
                                           print(ticks),
                                           ticks['tick'].forEach((tick) {
-                                            scriptData.add({
-                                              "data": tick,
-                                              "token": tick['instrument_token']
-                                                  .toString()
-                                            });
-
                                             if (tick['instrument_token'] ==
                                                 int.parse(
-                                                    script['script_token'])) {
+                                                    script['SCRIPT_TOKEN'])) {
                                               // print(tick);
 
                                               _scriptStream.add({
@@ -381,7 +274,7 @@ class _HomePageState extends State<HomePage> {
 
                                             // GET SCRIPT DATA
 
-                                            socket.on(
+                                            socketController.socket.on(
                                                 "receiveticks",
                                                 (ticks) => {
                                                       ticks['tick']
@@ -916,173 +809,120 @@ class _HomePageState extends State<HomePage> {
                                             );
                                           },
                                           child: Container(
-                                              width: 130,
+                                              width: 100,
                                               child: Text(
-                                                "${script['script_name']}",
+                                                "${script['SCRIPT_NAME']}",
                                                 style: TextStyle(fontSize: 10),
                                               ))),
                                       SizedBox(
                                         width: 10,
                                       ),
-                                      StreamBuilder(
-                                        stream: _scriptStream.stream,
-                                        builder: (context, snapshot) {
-                                          // var provider_value = "0";
-                                          Color color = Colors.transparent;
-                                          Color scriptColor =
-                                              Colors.transparent;
+                                      Row(
+                                        children: [
+                                          Container(
+                                            alignment: Alignment.centerLeft,
+                                            width: 100,
+                                            child: Container(
+                                              color: script['COLOR'] == 'G'
+                                                  ? Colors.green
+                                                  : script['COLOR'] == 'R'
+                                                      ? Colors.red
+                                                      : Colors.transparent,
+                                              child: Text(
+                                                "${script['CURRENT_PRICE'].toString()}",
+                                                style: TextStyle(),
+                                              ),
+                                            ),
+                                          ),
+                                          Container(
+                                              alignment: Alignment.centerLeft,
+                                              width: 100,
+                                              child: Text(
+                                                "${script['DIFFERENCE']}",
+                                              )),
+                                          Container(
+                                              alignment: Alignment.centerLeft,
+                                              width: 100,
+                                              child: Text(
+                                                  "${script['VOLUME_TRADE'].toString()}")),
+                                          Container(
+                                              alignment: Alignment.centerLeft,
+                                              width: 100,
+                                              child: Text(
+                                                  "${script['OPEN'].toString()}")),
+                                          Container(
+                                              alignment: Alignment.centerLeft,
+                                              width: 100,
+                                              child: Text(
+                                                  "${script['CLOSE'].toString()}")),
+                                          Container(
+                                              alignment: Alignment.centerLeft,
+                                              width: 100,
+                                              child: Text(
+                                                  "${script['HIGH'].toString()}",
+                                                  style: TextStyle(
+                                                      color: Colors.green))),
+                                          Container(
+                                              alignment: Alignment.centerLeft,
+                                              width: 70,
+                                              child: Text(
+                                                  "${script['LOW'].toString()}",
+                                                  style: TextStyle(
+                                                      color: Colors.red))),
+                                          GestureDetector(
+                                            onTap: () async {
+                                              final response =
+                                                  KiteApi.removeWatchList(
+                                                      script['script_token'],
+                                                      userID);
 
-                                          if (snapshot.hasData) {
-                                            var data = snapshot.data['data'];
+                                              response.then((res) {
+                                                // SnackBar snackBar;
+                                                if (res.status) {
+                                                  print("removed");
+                                                } else {
+                                                  print("not removed");
+                                                }
+                                              });
 
-                                            double todaysMarket = double.parse(
-                                                    data['last_price']
-                                                        .toString()) -
-                                                double.parse(data['ohlc']
-                                                        ['close']
-                                                    .toString());
+                                              print(script['script_id']);
+                                              socket.emit('unsubscribe', {
+                                                "token": [
+                                                  script['script_token']
+                                                ]
+                                              });
 
-                                            return Row(
-                                              children: [
-                                                Container(
-                                                  alignment:
-                                                      Alignment.centerLeft,
-                                                  width: 100,
-                                                  child: Text(
-                                                    "${data['last_price'].toString()}",
-                                                    style: TextStyle(
-                                                        backgroundColor:
-                                                            scriptColor),
-                                                  ),
-                                                ),
-                                                Container(
-                                                    alignment:
-                                                        Alignment.centerLeft,
-                                                    width: 100,
-                                                    child: Text(
-                                                        " ${todaysMarket.toDouble() > 0 ? "+" : ""}${double.parse(todaysMarket.toString()).toStringAsFixed(2)}",
-                                                        style: TextStyle(
-                                                            color: todaysMarket
-                                                                        .toDouble() >
-                                                                    0
-                                                                ? Colors.green
-                                                                : todaysMarket
-                                                                            .toDouble() ==
-                                                                        0
-                                                                    ? Colors
-                                                                        .transparent
-                                                                    : Colors
-                                                                        .red))),
-                                                Container(
-                                                    alignment:
-                                                        Alignment.centerLeft,
-                                                    width: 100,
-                                                    child: Text(
-                                                        "${data['volume'].toString()}")),
-                                                Container(
-                                                    alignment:
-                                                        Alignment.centerLeft,
-                                                    width: 100,
-                                                    child: Text(
-                                                        "${data['ohlc']['open'].toString()}")),
-                                                Container(
-                                                    alignment:
-                                                        Alignment.centerLeft,
-                                                    width: 100,
-                                                    child: Text(
-                                                        "${data['ohlc']['close'].toString()}")),
-                                                Container(
-                                                    alignment:
-                                                        Alignment.centerLeft,
-                                                    width: 100,
-                                                    child: Text(
-                                                        "${data['ohlc']['high'].toString()}",
-                                                        style: TextStyle(
-                                                            color:
-                                                                Colors.green))),
-                                                Container(
-                                                    alignment:
-                                                        Alignment.centerLeft,
-                                                    width: 70,
-                                                    child: Text(
-                                                        "${data['ohlc']['low'].toString()}",
-                                                        style: TextStyle(
-                                                            color:
-                                                                Colors.red))),
-                                                GestureDetector(
-                                                  onTap: () async {
-                                                    final response =
-                                                        KiteApi.removeWatchList(
-                                                            script[
-                                                                'script_token'],
-                                                            userID);
+                                              _scripts.removeAt(index);
 
-                                                    response.then((res) {
-                                                      // SnackBar snackBar;
-                                                      if (res.status) {
-                                                        print("removed");
-                                                      } else {
-                                                        print("not removed");
-                                                      }
-                                                    });
-
-                                                    print(script['script_id']);
-                                                    socket.emit('unsubscribe', {
-                                                      "token": [
-                                                        script['script_token']
-                                                      ]
-                                                    });
-
-                                                    _scripts.removeAt(index);
-
-                                                    setState(() {});
-                                                    _streamController
-                                                        .add(_scripts);
-                                                  },
-                                                  child: Container(
-                                                      alignment:
-                                                          Alignment.centerLeft,
-                                                      width: 30,
-                                                      child: Icon(
-                                                        Icons.cancel,
-                                                        size: 12,
-                                                        color: Colors.white,
-                                                      )),
-                                                ),
-                                              ],
-                                            );
-                                          } else if (snapshot.hasError) {
-                                            print('has Error');
-                                            return Text("Has Error");
-                                          } else {
-                                            print("loading data");
-                                            return Text("Loading Data");
-                                          }
-                                        },
+                                              setState(() {});
+                                              _streamController.add(_scripts);
+                                            },
+                                            child: Container(
+                                                alignment: Alignment.centerLeft,
+                                                width: 30,
+                                                child: Icon(
+                                                  Icons.cancel,
+                                                  size: 12,
+                                                  color: Colors.white,
+                                                )),
+                                          ),
+                                        ],
                                       )
                                     ],
                                   ),
                                 );
                               },
-                            );
-                          } else {
-                            return Center(
-                                child:
-                                    Container(child: Text("Data not found")));
-                          }
-                        },
-                      )
-                    : Container(
-                        child: Center(
-                          child: Text("Add Watchlist from + button"),
-                        ),
-                      ),
+                            )
+                          : Container(
+                              child: Center(
+                                child: Text("Add Watchlist from + button"),
+                              ),
+                            ),
+                    ),
+                  )
+                ],
               ),
-            )
-          ],
-        ),
-      ),
-    );
+            )));
   }
 
   List<Widget> _getTitleWidget() {
@@ -1113,7 +953,7 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  Widget _generateRightHandSideColumnRow(
+  Widget generateRightHandSideColumnRow(
       BuildContext context, KiteScriptDataModel script, int index) {
     if (script != null) {
       _storeOldValue(script.data.lastPrice);

@@ -51,7 +51,7 @@ class UserApi {
         if (jsonDecode(response.body)['status']) {
           thisResponse = userModelFromJson(response.body);
         } else {
-          thisResponse = UserModel(status: false, data: null);
+          thisResponse = UserModel(status: false, data: Data());
         }
 
         return thisResponse;

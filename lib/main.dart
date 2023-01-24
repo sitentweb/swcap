@@ -9,6 +9,9 @@ import 'package:socket_io_client/socket_io_client.dart';
 import 'package:swcap/auth/login.dart';
 import 'package:swcap/config/app_config.dart';
 import 'package:swcap/config/order_config.dart';
+import 'package:swcap/controllers/app_controller.dart';
+import 'package:swcap/controllers/socket_controller.dart';
+import 'package:swcap/controllers/user_controller.dart';
 import 'package:swcap/notifier/theme_notifier.dart';
 import 'package:swcap/notifier/tick_notifier.dart';
 import 'package:swcap/pages/homepage.dart';
@@ -28,9 +31,10 @@ class MyApp extends StatefulWidget {
 }
 
 class _MyAppState extends State<MyApp> {
-  bool userLogged = false;
+  AppController appController = Get.put(AppController());
+  UserController userController = UserController();
+  SocketController socketController = SocketController();
   CustomTheme currentTheme = CustomTheme();
-  Socket socket;
   int user;
 
   @override
@@ -44,57 +48,11 @@ class _MyAppState extends State<MyApp> {
   }
 
   getUserData() async {
-    SharedPreferences pref = await SharedPreferences.getInstance();
+    await userController.init();
 
-    if (pref.get("isLogged") != null) {
-      if (pref.getBool("isLogged")) {
-        userLogged = true;
-
-        socket = io('https://remarkhr.com:8443', <String, dynamic>{
-          'transports': ['websocket'],
-          'secure': true,
-          'rejectUnauthorized': false,
-          'autoConnect': true
-        });
-
-        socket.connect();
-
-        user = 8;
-
-        socket.emit('registerMeSwcap', {"user": user});
-
-        socket.on('userconnected', (data) {
-          print(data);
-        });
-
-        // OrderConfig().getTradeData();
-        OrderConfig().executeOrder(context);
-
-        socket.onConnectTimeout((data) {
-          print('Connection Time Out');
-        });
-
-        socket.onConnect((data) => {print('Connected')});
-
-        socket.onConnectError((data) {
-          print("Connection Error");
-          print(data);
-        });
-
-        socket.onDisconnect((data) {
-          print("Connection Disconnected");
-          print(data);
-        });
-
-        socket.onError((data) {
-          print("Error");
-          print(data);
-        });
-      } else {
-        userLogged = false;
-      }
-
-      setState(() {});
+    if (userController.isUserLoggedIn.isTrue) {
+      await socketController.init();
+      await socketController.registerUser(userController.user.value.id);
     }
   }
 
@@ -111,7 +69,7 @@ class _MyAppState extends State<MyApp> {
       debugShowCheckedModeBanner: false,
       title: 'Swing',
       theme: AppConfig.darkTheme,
-      home: userLogged ? HomePage() : Login(),
+      home: userController.isUserLoggedIn.isTrue ? HomePage() : Login(),
       darkTheme: AppConfig.darkTheme,
       themeMode: currentTheme.currentTheme,
     );
