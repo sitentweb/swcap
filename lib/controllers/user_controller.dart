@@ -67,4 +67,16 @@ class UserController extends GetxController {
     watchListScripts.clear();
     watchListsToken.clear();
   }
+
+  removeScript(id, userID) async {
+    watchListScripts.forEach((watchlist) async {
+      if (watchlist['script_id'] == id) {
+        watchListScripts.remove(watchlist);
+
+        await KiteApi.removeWatchList(watchlist['script_token'], userID);
+      }
+
+      watchListScripts.refresh();
+    });
+  }
 }

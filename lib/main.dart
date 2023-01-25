@@ -15,6 +15,7 @@ import 'package:swcap/controllers/user_controller.dart';
 import 'package:swcap/notifier/theme_notifier.dart';
 import 'package:swcap/notifier/tick_notifier.dart';
 import 'package:swcap/pages/homepage.dart';
+import 'package:swcap/pages/trade_book/trade_book.dart';
 
 void main() async {
   await GetStorage.init();
@@ -54,7 +55,17 @@ class _MyAppState extends State<MyApp> {
       await socketController.init();
       await socketController.registerUser(userController.user.value.id);
     }
+
+    return CallbackShortcuts(
+      bindings: {SingleActivator(LogicalKeyboardKey.keyT): _handleResetPressed},
+      child: Focus(
+        autofocus: true,
+        child: TradeBook(),
+      ),
+    );
   }
+
+  _handleResetPressed() {}
 
   @override
   void dispose() {
