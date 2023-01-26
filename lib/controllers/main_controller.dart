@@ -46,16 +46,16 @@ class MainController extends GetxController {
   }
 
   createWatchlistData() async {
-    watchListData.insert(0, {
-      "ID": "0",
-      "SCRIPT_NAME": "Symbol",
-      "CURRENT_PRICE": "Last Price",
-      "BUY_QUANTITY": "Buy Qty",
-      "BUY_PRICE": "Buy Price",
-      " ": ' ',
-      "SELL_PRICE": "Sell Price",
-      "SELL_QUANTITY": "Sell Qty"
-    });
+    // watchListData.insert(0, {
+    //   "ID": "0",
+    //   "SCRIPT_NAME": "Symbol",
+    //   "CURRENT_PRICE": "Last Price",
+    //   "BUY_QUANTITY": "Buy Qty",
+    //   "BUY_PRICE": "Buy Price",
+    //   " ": ' ',
+    //   "SELL_PRICE": "Sell Price",
+    //   "SELL_QUANTITY": "Sell Qty"
+    // });
 
     userController.watchListScripts.forEach((script) {
       watchListData.add({

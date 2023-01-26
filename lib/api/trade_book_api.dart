@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:developer';
 
 import 'package:http/http.dart' as http;
 import 'package:swcap/config/api_urls.dart';
@@ -38,11 +39,13 @@ class TradeBookApi {
   static Future<GlobalModel> createTradeBook(tradeData) async {
     final client = http.Client();
 
-    GlobalModel thisResponse = GlobalModel();
+    GlobalModel thisResponse = GlobalModel(status: false);
 
     try {
       final response = await client.post(Uri.parse(ApiUrl.createTradeBook),
           body: {"tradebook_data": tradeData});
+
+      log(response.body, name: 'CREATE TRADEBOOK');
 
       if (response.statusCode == 200) {
         if (jsonDecode(response.body)['status']) {
@@ -53,7 +56,7 @@ class TradeBookApi {
 
         return thisResponse;
       } else {
-        print("Wrong Status Code : ${response.body} ");
+        print("Wrong Status Code : ${response.statusCode} ");
       }
     } catch (e) {
       print(e);

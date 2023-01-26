@@ -18,8 +18,11 @@ import 'package:swcap/controllers/socket_controller.dart';
 import 'package:swcap/controllers/user_controller.dart';
 import 'package:swcap/model/kite/kite_script_model.dart';
 import 'package:swcap/model/user/user_model.dart';
+import 'package:swcap/pages/account/account.dart';
+import 'package:swcap/pages/order_book/order_book.dart';
 import 'package:swcap/pages/script_details.dart';
 import 'package:swcap/pages/search/search.dart';
+import 'package:swcap/pages/trade_book/trade_book.dart';
 // import 'package:socket_io_client/socket_io_client.dart';
 
 class HomePage extends StatefulWidget {
@@ -104,6 +107,47 @@ class _HomePageState extends State<HomePage> {
         appBar: AppBar(
           elevation: 0,
           backgroundColor: Colors.black12,
+          leadingWidth: MediaQuery.of(context).size.width * 0.5,
+          leading: Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: Row(
+              children: [
+                InkWell(
+                  onTap: () => Get.to(() => HomePage()),
+                  child: Container(
+                    child: Text("Watchlist"),
+                  ),
+                ),
+                SizedBox(
+                  width: 20,
+                ),
+                InkWell(
+                  onTap: () => Get.to(() => OrderBook()),
+                  child: Container(
+                    child: Text("Orders"),
+                  ),
+                ),
+                SizedBox(
+                  width: 20,
+                ),
+                InkWell(
+                  onTap: () => Get.to(() => TradeBook()),
+                  child: Container(
+                    child: Text("Trades"),
+                  ),
+                ),
+                SizedBox(
+                  width: 20,
+                ),
+                InkWell(
+                  onTap: () => Get.to(() => Account()),
+                  child: Container(
+                    child: Text("Account"),
+                  ),
+                ),
+              ],
+            ),
+          ),
           actions: [
             InkWell(
               onTap: () {
@@ -682,10 +726,9 @@ class _HomePageState extends State<HomePage> {
                                                 return false;
                                               }
 
-                                              if (_priceController.text == "" ||
-                                                  double.parse(_priceController
-                                                          .text) <
-                                                      1.0) {
+                                              if (_priceController.text == "") {
+                                                print(_priceController.text);
+                                                print(lastPrice);
                                                 setState(() => errorAlert =
                                                     "Invalid Price");
                                                 return false;
